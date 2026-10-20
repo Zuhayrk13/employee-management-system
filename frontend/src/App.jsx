@@ -23,6 +23,21 @@ function App() {
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  
+const today = new Date();
+
+const latestEligibleDob = new Date(
+  today.getFullYear() - 18,
+  today.getMonth(),
+  today.getDate()
+);
+
+const maxDob = [
+  latestEligibleDob.getFullYear(),
+  String(latestEligibleDob.getMonth() + 1).padStart(2, "0"),
+  String(latestEligibleDob.getDate()).padStart(2, "0"),
+].join("-");
+
 
   async function fetchEmployees() {
     try {
@@ -81,6 +96,57 @@ function App() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    
+const namePattern = /^[\p{L}]+(?:[ '-’][\p{L}]+)*$/u;
+
+if (!namePattern.test(form.first_name.trim())) {
+  setError(
+    "First name must contain letters only. Spaces, hyphens and apostrophes are allowed."
+  );
+  setMessage("");
+  return;
+}
+
+if (!namePattern.test(form.last_name.trim())) {
+  setError(
+    "Last name must contain letters only. Spaces, hyphens and apostrophes are allowed."
+  );
+  setMessage("");
+  return;
+}
+
+if (
+  !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())
+) {
+  setError("Please enter a valid email address.");
+  setMessage("");
+  return;
+}
+
+if (!form.date_of_birth) {
+  setError("Please enter a date of birth.");
+  setMessage("");
+  return;
+}
+
+const dob = new Date(`${form.date_of_birth}T00:00:00`);
+const today = new Date();
+
+const eighteenthBirthday = new Date(
+  dob.getFullYear() + 18,
+  dob.getMonth(),
+  dob.getDate()
+);
+
+if (
+  Number.isNaN(dob.getTime()) ||
+  eighteenthBirthday > today
+) {
+  setError("Employee must be at least 18 years old.");
+  setMessage("");
+  return;
+}
+
 
     try {
       setSubmitting(true);
@@ -286,7 +352,7 @@ function App() {
               type="date"
               value={form.date_of_birth}
               onChange={handleChange}
-              max={new Date().toLocaleDateString("en-CA")}
+              max={maxDob}
               required
             />
           </div>

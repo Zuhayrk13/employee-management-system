@@ -90,6 +90,7 @@ def init_db():
 
 
 # Validate employee data received from React
+
 def validate_employee_data(data):
     if not isinstance(data, dict):
         return None, "Invalid request data"
@@ -101,12 +102,16 @@ def validate_employee_data(data):
     status = data.get("status", "Active")
     date_of_birth = data.get("date_of_birth")
 
-    # Ensure all required fields are strings
-    values = [first_name, last_name, email, department, date_of_birth]
+    # Check that required fields are strings
+    values = [
+        first_name, last_name, email,
+        department, date_of_birth
+    ]
 
     if not all(isinstance(value, str) for value in values):
         return None, "All fields are required"
 
+    # Remove unnecessary spaces
     first_name = first_name.strip()
     last_name = last_name.strip()
     email = email.strip()
@@ -114,28 +119,70 @@ def validate_employee_data(data):
     date_of_birth = date_of_birth.strip()
 
     if not all([
-        first_name,
-        last_name,
-        email,
-        department,
-        date_of_birth
+        first_name, last_name, email,
+        department, date_of_birth
     ]):
         return None, "All fields are required"
 
-    if not isinstance(status, str) or status not in ("Active", "Inactive"):
+    # Validate names: letters, spaces, hyphens and apostrophes
+    def valid_name(name):
+        return (
+            any(char.isalpha() for char in name)
+            and all(
+                char.isalpha() or char in " -'’"
+                for char in name
+            )
+        )
+
+    if not valid_name(first_name):
+        return None, (
+            "First name must contain letters only. "
+            "Spaces, hyphens and apostrophes are allowed."
+        )
+
+    if not valid_name(last_name):
+        return None, (
+            "Last name must contain letters only. "
+            "Spaces, hyphens and apostrophes are allowed."
+        )
+
+    # Basic email format validation
+    import re
+
+    email_pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+
+    if not re.fullmatch(email_pattern, email):
+        return None, "Please enter a valid email address"
+
+    # Validate employment status
+    if not isinstance(status, str) or status not in (
+        "Active", "Inactive"
+    ):
         return None, "Status must be Active or Inactive"
 
+    # Validate date of birth
     try:
         dob = date.fromisoformat(date_of_birth)
 
         if dob.isoformat() != date_of_birth:
             raise ValueError
 
-        if dob > date.today():
-            return None, "Date of birth cannot be in the future"
-
     except ValueError:
         return None, "Please enter a valid date of birth"
+
+    today = date.today()
+
+    if dob > today:
+        return None, "Date of birth cannot be in the future"
+
+    # Calculate age accurately, including birthdays
+    age = (
+        today.year - dob.year
+        - ((today.month, today.day) < (dob.month, dob.day))
+    )
+
+    if age < 18:
+        return None, "Employee must be at least 18 years old"
 
     return {
         "first_name": first_name,
@@ -146,6 +193,7 @@ def validate_employee_data(data):
         "status": status,
         "date_of_birth": date_of_birth,
     }, None
+
 
 
 # Convert a database row into JSON-compatible data
