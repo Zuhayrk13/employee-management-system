@@ -1,4 +1,4 @@
-
+import os
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from datetime import date
@@ -8,7 +8,12 @@ from pathlib import Path
 app = Flask(__name__)
 CORS(app)
 
-DATABASE = Path(__file__).resolve().parent / "employees.db"
+DATABASE = Path(
+    os.environ.get(
+        "DATABASE_PATH",
+        str(Path(__file__).resolve().parent / "employees.db")
+    )
+)
 
 
 # Connect to the SQLite database
@@ -309,8 +314,4 @@ def delete_employee(employee_id):
 
 
 if __name__ == "__main__":
-    app.run(
-        host="127.0.0.1",
-        port=5000,
-        debug=True
-    )
+    app.run(host="0.0.0.0", port=5000, debug=False)
