@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import "./App.css";
 
@@ -6,6 +5,7 @@ const API_URL = "/api/employees";
 
 const emptyForm = {
   first_name: "",
+  middle_name: "",
   last_name: "",
   date_of_birth: "",
   email: "",
@@ -23,21 +23,20 @@ function App() {
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
-  
-const today = new Date();
 
-const latestEligibleDob = new Date(
-  today.getFullYear() - 18,
-  today.getMonth(),
-  today.getDate()
-);
+  const today = new Date();
 
-const maxDob = [
-  latestEligibleDob.getFullYear(),
-  String(latestEligibleDob.getMonth() + 1).padStart(2, "0"),
-  String(latestEligibleDob.getDate()).padStart(2, "0"),
-].join("-");
+  const latestEligibleDob = new Date(
+    today.getFullYear() - 18,
+    today.getMonth(),
+    today.getDate()
+  );
 
+  const maxDob = [
+    latestEligibleDob.getFullYear(),
+    String(latestEligibleDob.getMonth() + 1).padStart(2, "0"),
+    String(latestEligibleDob.getDate()).padStart(2, "0"),
+  ].join("-");
 
   async function fetchEmployees() {
     try {
@@ -75,6 +74,7 @@ const maxDob = [
 
     setForm({
       first_name: employee.first_name || "",
+      middle_name: employee.middle_name || "",
       last_name: employee.last_name || "",
       date_of_birth: employee.date_of_birth || "",
       email: employee.email || "",
@@ -96,57 +96,67 @@ const maxDob = [
 
   async function handleSubmit(event) {
     event.preventDefault();
-    
-const namePattern = /^[\p{L}]+(?:[ '-’][\p{L}]+)*$/u;
 
-if (!namePattern.test(form.first_name.trim())) {
-  setError(
-    "First name must contain letters only. Spaces, hyphens and apostrophes are allowed."
-  );
-  setMessage("");
-  return;
-}
+    const namePattern = /^[\p{L}]+(?:[ '-’][\p{L}]+)*$/u;
 
-if (!namePattern.test(form.last_name.trim())) {
-  setError(
-    "Last name must contain letters only. Spaces, hyphens and apostrophes are allowed."
-  );
-  setMessage("");
-  return;
-}
+    if (!namePattern.test(form.first_name.trim())) {
+      setError(
+        "First name must contain letters only. Spaces, hyphens and apostrophes are allowed."
+      );
+      setMessage("");
+      return;
+    }
 
-if (
-  !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())
-) {
-  setError("Please enter a valid email address.");
-  setMessage("");
-  return;
-}
+    if (
+      form.middle_name.trim() &&
+      !namePattern.test(form.middle_name.trim())
+    ) {
+      setError(
+        "Middle name must contain letters only. Spaces, hyphens and apostrophes are allowed."
+      );
+      setMessage("");
+      return;
+    }
 
-if (!form.date_of_birth) {
-  setError("Please enter a date of birth.");
-  setMessage("");
-  return;
-}
+    if (!namePattern.test(form.last_name.trim())) {
+      setError(
+        "Last name must contain letters only. Spaces, hyphens and apostrophes are allowed."
+      );
+      setMessage("");
+      return;
+    }
 
-const dob = new Date(`${form.date_of_birth}T00:00:00`);
-const today = new Date();
+    const email = form.email.trim();
+    const emailPattern = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
 
-const eighteenthBirthday = new Date(
-  dob.getFullYear() + 18,
-  dob.getMonth(),
-  dob.getDate()
-);
+    if (!emailPattern.test(email)) {
+      setError(
+        "Please enter a valid email address using lowercase letters only."
+      );
+      setMessage("");
+      return;
+    }
 
-if (
-  Number.isNaN(dob.getTime()) ||
-  eighteenthBirthday > today
-) {
-  setError("Employee must be at least 18 years old.");
-  setMessage("");
-  return;
-}
+    if (!form.date_of_birth) {
+      setError("Please enter a date of birth.");
+      setMessage("");
+      return;
+    }
 
+    const dob = new Date(`${form.date_of_birth}T00:00:00`);
+    const today = new Date();
+
+    const eighteenthBirthday = new Date(
+      dob.getFullYear() + 18,
+      dob.getMonth(),
+      dob.getDate()
+    );
+
+    if (Number.isNaN(dob.getTime()) || eighteenthBirthday > today) {
+      setError("Employee must be at least 18 years old.");
+      setMessage("");
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -155,6 +165,15 @@ if (
 
       const isEditing = editingId !== null;
 
+      const payload = {
+        ...form,
+        first_name: form.first_name.trim(),
+        middle_name: form.middle_name.trim(),
+        last_name: form.last_name.trim(),
+        email,
+        department: form.department.trim(),
+      };
+
       const response = await fetch(
         isEditing ? `${API_URL}/${editingId}` : API_URL,
         {
@@ -162,7 +181,7 @@ if (
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(form),
+          body: JSON.stringify(payload),
         }
       );
 
@@ -189,8 +208,16 @@ if (
   }
 
   async function handleDelete(employee) {
+    const employeeName = [
+      employee.first_name,
+      employee.middle_name,
+      employee.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
     const confirmed = window.confirm(
-      `Are you sure you want to delete ${employee.first_name} ${employee.last_name}?`
+      `Are you sure you want to delete ${employeeName}?`
     );
 
     if (!confirmed) return;
@@ -229,8 +256,13 @@ if (
   ).length;
 
   const filteredEmployees = employees.filter((employee) => {
-    const fullName =
-      `${employee.first_name || ""} ${employee.last_name || ""}`.toLowerCase();
+    const fullName = [
+      employee.first_name || "",
+      employee.middle_name || "",
+      employee.last_name || "",
+    ]
+      .join(" ")
+      .toLowerCase();
 
     const searchText = search.toLowerCase();
 
@@ -304,7 +336,9 @@ if (
         <div className="section-heading">
           <div>
             <p className="eyebrow">EMPLOYEE DETAILS</p>
-            <h2>{editingId !== null ? "Edit Employee" : "Add New Employee"}</h2>
+            <h2>
+              {editingId !== null ? "Edit Employee" : "Add New Employee"}
+            </h2>
             <p className="muted">
               {editingId !== null
                 ? "Update the employee's information."
@@ -328,6 +362,20 @@ if (
               placeholder="e.g. Alex"
               autoComplete="given-name"
               required
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="middle_name">
+              Middle Name <span className="muted">(Optional)</span>
+            </label>
+            <input
+              id="middle_name"
+              name="middle_name"
+              value={form.middle_name}
+              onChange={handleChange}
+              placeholder="e.g. James"
+              autoComplete="additional-name"
             />
           </div>
 
@@ -495,67 +543,79 @@ if (
               </thead>
 
               <tbody>
-                {filteredEmployees.map((employee) => (
-                  <tr key={employee.id}>
-                    <td>
-                      <div className="employee-identity">
-                        <div className="avatar">
-                          {(employee.first_name || "?").charAt(0).toUpperCase()}
-                          {(employee.last_name || "").charAt(0).toUpperCase()}
+                {filteredEmployees.map((employee) => {
+                  const fullName = [
+                    employee.first_name,
+                    employee.middle_name,
+                    employee.last_name,
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
+
+                  return (
+                    <tr key={employee.id}>
+                      <td>
+                        <div className="employee-identity">
+                          <div className="avatar">
+                            {(employee.first_name || "?")
+                              .charAt(0)
+                              .toUpperCase()}
+                            {(employee.last_name || "")
+                              .charAt(0)
+                              .toUpperCase()}
+                          </div>
+
+                          <div>
+                            <strong>{fullName}</strong>
+                            <span>Employee #{employee.id}</span>
+                          </div>
                         </div>
+                      </td>
 
-                        <div>
-                          <strong>
-                            {employee.first_name} {employee.last_name}
-                          </strong>
-                          <span>Employee #{employee.id}</span>
+                      <td>{employee.date_of_birth || "—"}</td>
+                      <td>{employee.email}</td>
+
+                      <td>
+                        <span className="department-label">
+                          {employee.department}
+                        </span>
+                      </td>
+
+                      <td>
+                        <span
+                          className={`status-badge ${
+                            employee.status === "Active"
+                              ? "status-active"
+                              : "status-inactive"
+                          }`}
+                        >
+                          <span className="status-dot"></span>
+                          {employee.status}
+                        </span>
+                      </td>
+
+                      <td>
+                        <div className="row-actions">
+                          <button
+                            type="button"
+                            className="edit-button"
+                            onClick={() => startEditing(employee)}
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            className="delete-button"
+                            onClick={() => handleDelete(employee)}
+                          >
+                            Delete
+                          </button>
                         </div>
-                      </div>
-                    </td>
-
-                    <td>{employee.date_of_birth || "—"}</td>
-                    <td>{employee.email}</td>
-
-                    <td>
-                      <span className="department-label">
-                        {employee.department}
-                      </span>
-                    </td>
-
-                    <td>
-                      <span
-                        className={`status-badge ${
-                          employee.status === "Active"
-                            ? "status-active"
-                            : "status-inactive"
-                        }`}
-                      >
-                        <span className="status-dot"></span>
-                        {employee.status}
-                      </span>
-                    </td>
-
-                    <td>
-                      <div className="row-actions">
-                        <button
-                          type="button"
-                          className="edit-button"
-                          onClick={() => startEditing(employee)}
-                        >
-                          Edit
-                        </button>
-
-                        <button
-                          type="button"
-                          className="delete-button"
-                          onClick={() => handleDelete(employee)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -571,3 +631,4 @@ if (
 }
 
 export default App;
+

@@ -1,9 +1,12 @@
+
 import os
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-from datetime import date
+import re
 import sqlite3
 from pathlib import Path
+from datetime import date
+
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
@@ -49,6 +52,12 @@ def init_db():
                 "ALTER TABLE employees ADD COLUMN first_name TEXT"
             )
 
+        if "middle_name" not in columns:
+            connection.execute("""
+                ALTER TABLE employees
+                ADD COLUMN middle_name TEXT NOT NULL DEFAULT ''
+            """)
+
         if "last_name" not in columns:
             connection.execute(
                 "ALTER TABLE employees ADD COLUMN last_name TEXT"
@@ -66,6 +75,7 @@ def init_db():
             )
 
         # Migrate existing full names into first and last names.
+        # Existing names are preserved; middle names are initially blank.
         rows = connection.execute("""
             SELECT id, name
             FROM employees
@@ -90,39 +100,50 @@ def init_db():
 
 
 # Validate employee data received from React
-
 def validate_employee_data(data):
     if not isinstance(data, dict):
         return None, "Invalid request data"
 
     first_name = data.get("first_name")
+    middle_name = data.get("middle_name", "")
     last_name = data.get("last_name")
     email = data.get("email")
     department = data.get("department")
     status = data.get("status", "Active")
     date_of_birth = data.get("date_of_birth")
 
-    # Check that required fields are strings
-    values = [
-        first_name, last_name, email,
-        department, date_of_birth
+    # Required fields must be strings
+    required_values = [
+        first_name,
+        last_name,
+        email,
+        department,
+        date_of_birth,
     ]
 
-    if not all(isinstance(value, str) for value in values):
-        return None, "All fields are required"
+    if not all(isinstance(value, str) for value in required_values):
+        return None, "All required fields must be provided as text"
+
+    # Middle name is optional, but if provided it must be text
+    if not isinstance(middle_name, str):
+        return None, "Middle name must be text"
 
     # Remove unnecessary spaces
     first_name = first_name.strip()
+    middle_name = middle_name.strip()
     last_name = last_name.strip()
     email = email.strip()
     department = department.strip()
     date_of_birth = date_of_birth.strip()
 
     if not all([
-        first_name, last_name, email,
-        department, date_of_birth
+        first_name,
+        last_name,
+        email,
+        department,
+        date_of_birth,
     ]):
-        return None, "All fields are required"
+        return None, "All required fields are required"
 
     # Validate names: letters, spaces, hyphens and apostrophes
     def valid_name(name):
@@ -140,19 +161,26 @@ def validate_employee_data(data):
             "Spaces, hyphens and apostrophes are allowed."
         )
 
+    if middle_name and not valid_name(middle_name):
+        return None, (
+            "Middle name must contain letters only. "
+            "Spaces, hyphens and apostrophes are allowed."
+        )
+
     if not valid_name(last_name):
         return None, (
             "Last name must contain letters only. "
             "Spaces, hyphens and apostrophes are allowed."
         )
 
-    # Basic email format validation
-    import re
-
-    email_pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+    # Validate email format and require lowercase letters
+    email_pattern = r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
 
     if not re.fullmatch(email_pattern, email):
-        return None, "Please enter a valid email address"
+        return None, (
+            "Please enter a valid email address using "
+            "lowercase letters only."
+        )
 
     # Validate employment status
     if not isinstance(status, str) or status not in (
@@ -184,10 +212,21 @@ def validate_employee_data(data):
     if age < 18:
         return None, "Employee must be at least 18 years old"
 
+    # Build the full name without extra spaces
+    full_name = " ".join(
+        part for part in (
+            first_name,
+            middle_name,
+            last_name,
+        )
+        if part
+    )
+
     return {
         "first_name": first_name,
+        "middle_name": middle_name,
         "last_name": last_name,
-        "name": f"{first_name} {last_name}",
+        "name": full_name,
         "email": email,
         "department": department,
         "status": status,
@@ -195,13 +234,14 @@ def validate_employee_data(data):
     }, None
 
 
-
 # Convert a database row into JSON-compatible data
 def employee_to_dict(employee):
     return {
         "id": employee["id"],
         "first_name": employee["first_name"],
+        "middle_name": employee["middle_name"] or "",
         "last_name": employee["last_name"],
+        "name": employee["name"],
         "email": employee["email"],
         "department": employee["department"],
         "status": employee["status"],
@@ -226,8 +266,8 @@ def get_employees():
 
     try:
         employees = connection.execute("""
-            SELECT id, first_name, last_name, email,
-                   department, status, date_of_birth
+            SELECT id, name, first_name, middle_name, last_name,
+                   email, department, status, date_of_birth
             FROM employees
             ORDER BY id DESC
         """).fetchall()
@@ -255,13 +295,14 @@ def add_employee():
     try:
         cursor = connection.execute("""
             INSERT INTO employees (
-                name, first_name, last_name, email,
-                department, status, date_of_birth
+                name, first_name, middle_name, last_name,
+                email, department, status, date_of_birth
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             employee["name"],
             employee["first_name"],
+            employee["middle_name"],
             employee["last_name"],
             employee["email"],
             employee["department"],
@@ -273,7 +314,7 @@ def add_employee():
 
         return jsonify({
             "message": "Employee added successfully",
-            "id": cursor.lastrowid
+            "id": cursor.lastrowid,
         }), 201
 
     except sqlite3.IntegrityError:
@@ -307,6 +348,7 @@ def update_employee(employee_id):
             UPDATE employees
             SET name = ?,
                 first_name = ?,
+                middle_name = ?,
                 last_name = ?,
                 email = ?,
                 department = ?,
@@ -316,6 +358,7 @@ def update_employee(employee_id):
         """, (
             employee["name"],
             employee["first_name"],
+            employee["middle_name"],
             employee["last_name"],
             employee["email"],
             employee["department"],
